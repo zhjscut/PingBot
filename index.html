@@ -245,6 +245,7 @@
             gap: 10px;
             justify-content: center;
             margin-top: 20px;
+            flex-wrap: wrap;
         }
 
         button {
@@ -316,10 +317,6 @@
                 font-size: 12px;
             }
 
-            .button-group {
-                flex-wrap: wrap;
-            }
-
             button {
                 padding: 8px 15px;
                 font-size: 12px;
@@ -362,14 +359,13 @@
         </div>
 
         <div class="button-group">
-            <button class="btn-calculate" onclick="autoCalculateCalcScores()">自动计算附加分</button>
             <button class="btn-calculate" onclick="calculateScores()">计算积分</button>
             <button class="btn-export" onclick="exportToCSV()">导出数据</button>
             <button class="btn-reset" onclick="resetTable()">重置表格</button>
         </div>
 
         <div class="info-text">
-            💡 提示：点击比赛成绩格子选择比分（0-0、2-0、2-1、1-2、0-2）。当两名选手同分时，可使用“自动计算附加分”按钮自动计算他们之间的胜负关系作为附加分。胜积2分、负积1分、平局0分。
+            💡 提示：点击比赛成绩格子选择比分（0-0、2-0、2-1、1-2、0-2）。胜积2分、负积1分、平局0分。当所有比赛填满后，系统自动计算附加分和排名。
         </div>
     </div>
 
@@ -396,7 +392,6 @@
             const file = event.target.files[0];
             if (!file) return;
 
-            // 检查XLSX库是否加载
             if (typeof XLSX === 'undefined') {
                 alert('❌ Excel库加载中，请稍候后重试');
                 return;
@@ -410,12 +405,10 @@
                     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                     const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                     
-                    // 解析选手名称
                     const teamNames = [];
                     for (let i = 1; i < jsonData.length; i++) {
                         const row = jsonData[i];
                         if (row[0]) {
-                            // 提取选手名称（去掉序号）
                             const name = row[0].toString().replace(/^\d+-/, '');
                             teamNames.push(name);
                         }
@@ -426,10 +419,7 @@
                         return;
                     }
 
-                    // 根据选手数量重建表格
                     initTableWithTeams(teamNames);
-                    
-                    // 尝试恢复比分数据
                     restoreScoresFromData(jsonData, teamNames);
                     
                     alert(`✅ 成功导入 ${teamNames.length} 位选手！`);
@@ -443,26 +433,18 @@
 
         // 从导入的数据中恢复比分
         function restoreScoresFromData(jsonData, teamNames) {
-            // 跳过表头行，从第二行开始
             for (let i = 1; i < jsonData.length; i++) {
                 const row = jsonData[i];
                 if (!row[0]) continue;
                 
-                // 第一列是选手名称，跳过
-                // 第2到n+1列是对手的比分
                 for (let j = 1; j <= teamNames.length; j++) {
                     const score = row[j];
                     if (score && score !== '-' && score !== '') {
-                        // 构建matchKey: 行号-列号
                         const matchKey = `${i}-${j}`;
-                        
-                        // 查找对应的按钮并设置比分
                         const btn = document.querySelector(`button[data-match="${matchKey}"]`);
                         if (btn) {
-                            // 找到对应的scoreOption
                             const scoreOption = scoreOptions.find(opt => opt.display === score);
                             if (scoreOption) {
-                                // 直接设置比分而不触发下拉菜单
                                 matchScores.set(matchKey, { 
                                     display: score, 
                                     rowScore: scoreOption.rowScore, 
@@ -470,7 +452,6 @@
                                 });
                                 btn.textContent = score;
                                 btn.classList.add('selected');
-                                // 只标记上三角的格子为用户填充，避免重复计算
                                 if (i < j) {
                                     userFilledMatches.add(matchKey);
                                 }
@@ -480,19 +461,16 @@
                 }
             }
             
-            // 恢复完成后重新计算积分
             calculateScores();
         }
 
         // 根据选手列表初始化表格
         function initTableWithTeams(teamNames) {
-            // 更新全局teams数组
             teams = teamNames.map((name, index) => ({
                 id: index + 1,
                 name: name
             }));
 
-            // 更新表头
             const numTeams = teams.length;
             for (let i = 1; i <= 7; i++) {
                 const header = document.getElementById(`header-${i}`);
@@ -504,7 +482,6 @@
                 }
             }
 
-            // 清空并重建表格
             matchScores.clear();
             userFilledMatches.clear();
             initTable();
@@ -631,74 +608,6 @@
             return userFilledMatches.size === totalUserFilled;
         }
 
-        // 自动计算附加分
-        function autoCalculateCalcScores() {
-            if (!areAllMatchesFilled()) {
-                alert('❌ 请先填满所有比赛成绩');
-                return;
-            }
-
-            // 计算每个队伍的基础积分
-            const scores = {};
-            teams.forEach(team => {
-                scores[team.id] = 0;
-            });
-
-            userFilledMatches.forEach(matchKey => {
-                const scoreData = matchScores.get(matchKey);
-                const [teamRowId, teamColId] = matchKey.split('-').map(Number);
-                scores[teamRowId] += scoreData.rowScore;
-                scores[teamColId] += scoreData.colScore;
-            });
-
-            // 找到所有同分的队伍组
-            const scoreGroups = {};
-            teams.forEach(team => {
-                const score = scores[team.id];
-                if (!scoreGroups[score]) {
-                    scoreGroups[score] = [];
-                }
-                scoreGroups[score].push(team.id);
-            });
-
-            // 对于每个同分的队伍组，计算他们之间的胜负关系
-            teams.forEach(team => {
-                const teamScore = scores[team.id];
-                const sameScoreTeams = scoreGroups[teamScore];
-
-                if (sameScoreTeams.length > 1) {
-                    // 有同分的队伍，计算与他们的胜负关系
-                    let calcScore = 0;
-                    sameScoreTeams.forEach(otherTeamId => {
-                        if (otherTeamId !== team.id) {
-                            // 查找这两个队伍之间的比赛结果
-                            const matchKey = `${team.id}-${otherTeamId}`;
-                            if (matchScores.has(matchKey)) {
-                                const scoreData = matchScores.get(matchKey);
-                                calcScore += scoreData.rowScore;
-                            }
-                        }
-                    });
-                    
-                    // 设置计算分
-                    const calcInput = document.querySelector(`input[data-team="${team.id}"][data-type="calc"]`);
-                    if (calcInput) {
-                        calcInput.value = calcScore;
-                    }
-                } else {
-                    // 没有同分的队伍，计算分为0
-                    const calcInput = document.querySelector(`input[data-team="${team.id}"][data-type="calc"]`);
-                    if (calcInput) {
-                        calcInput.value = 0;
-                    }
-                }
-            });
-
-            // 重新计算积分和排名
-            calculateScores();
-            alert('✅ 附加分已自动计算！');
-        }
-
         // 计算积分
         function calculateScores() {
             const scores = {};
@@ -717,19 +626,49 @@
                 scores[teamColId] += scoreData.colScore;
             });
 
-            // 获取计算分
-            teams.forEach(team => {
-                const calcInput = document.querySelector(`input[data-team="${team.id}"][data-type="calc"]`);
-                if (calcInput) {
-                    calcScores[team.id] = parseInt(calcInput.value) || 0;
-                }
-            });
-
             teams.forEach(team => {
                 document.querySelector(`td[data-total="${team.id}"]`).textContent = scores[team.id];
             });
 
             if (areAllMatchesFilled()) {
+                // 所有比赛都填满了，自动计算附加分
+                const scoreGroups = {};
+                teams.forEach(team => {
+                    const score = scores[team.id];
+                    if (!scoreGroups[score]) {
+                        scoreGroups[score] = [];
+                    }
+                    scoreGroups[score].push(team.id);
+                });
+
+                // 对于每个队伍，计算其与同分队伍之间的胜负关系
+                teams.forEach(team => {
+                    const teamScore = scores[team.id];
+                    const sameScoreTeams = scoreGroups[teamScore];
+
+                    let calcScore = 0;
+                    if (sameScoreTeams.length > 1) {
+                        // 有同分的队伍，计算与他们的胜负关系
+                        sameScoreTeams.forEach(otherTeamId => {
+                            if (otherTeamId !== team.id) {
+                                // 查找这两个队伍之间的比赛结果
+                                const matchKey = `${team.id}-${otherTeamId}`;
+                                if (matchScores.has(matchKey)) {
+                                    const scoreData = matchScores.get(matchKey);
+                                    calcScore += scoreData.rowScore;
+                                }
+                            }
+                        });
+                    }
+                    
+                    // 设置计算分
+                    const calcInput = document.querySelector(`input[data-team="${team.id}"][data-type="calc"]`);
+                    if (calcInput) {
+                        calcInput.value = calcScore;
+                    }
+                    calcScores[team.id] = calcScore;
+                });
+
                 // 排序：先按积分排序，积分相同则按计算分排序
                 const sorted = teams.map(team => ({
                     id: team.id,
@@ -753,6 +692,13 @@
                     document.querySelector(`td[data-rank="${item.id}"]`).textContent = item.rank;
                 });
             } else {
+                // 还有比赛未填，清空附加分和排名
+                teams.forEach(team => {
+                    const calcInput = document.querySelector(`input[data-team="${team.id}"][data-type="calc"]`);
+                    if (calcInput) {
+                        calcInput.value = 0;
+                    }
+                });
                 document.querySelectorAll('.rank').forEach(cell => {
                     cell.textContent = '-';
                 });
@@ -785,21 +731,17 @@
 
         // 导出为XLSX
         function exportToCSV() {
-            // 创建工作簿
             const workbook = XLSX.utils.book_new();
             
-            // 准备数据
             const data = [];
             
-            // 添加表头
             const header = ['选手名称'];
             teams.forEach((team, idx) => {
                 header.push(`对手${idx + 1}`);
             });
-            header.push('积分', '名次');
+            header.push('积分', '计算', '名次');
             data.push(header);
             
-            // 添加数据行
             const rows = document.querySelectorAll('#tableBody tr');
             rows.forEach((row, rowIdx) => {
                 const cells = row.querySelectorAll('td');
@@ -807,7 +749,6 @@
                 const teamName = cells[0].textContent;
                 rowData.push(teamName);
                 
-                // 添加每场比赛的成绩
                 for (let i = 1; i <= teams.length; i++) {
                     const btn = cells[i].querySelector('.score-btn');
                     if (btn) {
@@ -818,27 +759,24 @@
                 }
                 
                 const total = cells[teams.length + 1].textContent;
+                const calc = cells[teams.length + 2].querySelector('input').value;
                 const rank = cells[teams.length + 3].textContent;
 
-                rowData.push(total, rank);
+                rowData.push(total, calc, rank);
                 data.push(rowData);
             });
             
-            // 创建工作表
             const worksheet = XLSX.utils.aoa_to_sheet(data);
             
-            // 设置列宽
             const colWidths = [15];
             for (let i = 0; i < teams.length; i++) {
                 colWidths.push(12);
             }
-            colWidths.push(10, 10);
+            colWidths.push(10, 10, 10);
             worksheet['!cols'] = colWidths.map(w => ({ wch: w }));
             
-            // 添加工作表到工作簿
             XLSX.utils.book_append_sheet(workbook, worksheet, '计分表');
             
-            // 导出文件
             XLSX.writeFile(workbook, '乒乓球计分表.xlsx');
             
             alert('✅ 数据已导出为XLSX格式！');
@@ -846,7 +784,6 @@
 
         // 页面加载时初始化
         window.addEventListener('DOMContentLoaded', () => {
-            // 初始化为空表格
             teams = [];
         });
     </script>
