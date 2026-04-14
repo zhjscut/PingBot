@@ -37,6 +37,52 @@
             font-size: 28px;
         }
 
+        .upload-section {
+            margin-bottom: 30px;
+        }
+
+        .upload-box {
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            background: #f9f9f9;
+            transition: all 0.3s ease;
+        }
+
+        .upload-box:hover {
+            border-color: #764ba2;
+            background: #f5f5f5;
+        }
+
+        .upload-box.dragover {
+            border-color: #764ba2;
+            background: #efefef;
+        }
+
+        .btn-upload {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .btn-upload:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .upload-hint {
+            color: #999;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
         .table-wrapper {
             overflow-x: auto;
         }
@@ -284,17 +330,26 @@
     <div class="container">
         <h1>🏓 乒乓球小组赛计分表</h1>
         
+        <div class="upload-section">
+            <div class="upload-box">
+                <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFileUpload(event)" style="display: none;">
+                <button class="btn-upload" onclick="document.getElementById('fileInput').click()">📄 上传Excel文件</button>
+                <div class="upload-hint">或拖拽Excel文件到此处</div>
+            </div>
+        </div>
+        
         <div class="table-wrapper">
             <table id="scoreTable">
                 <thead>
                     <tr>
                         <th>选手名称</th>
-                        <th>1</th>
-                        <th>2</th>
-                        <th>3</th>
-                        <th>4</th>
-                        <th>5</th>
-                        <th>6</th>
+                        <th id="header-1">1</th>
+                        <th id="header-2">2</th>
+                        <th id="header-3">3</th>
+                        <th id="header-4">4</th>
+                        <th id="header-5">5</th>
+                        <th id="header-6">6</th>
+                        <th id="header-7" style="display:none;">7</th>
                         <th>积分</th>
                         <th>计算</th>
                         <th>名次</th>
@@ -316,19 +371,9 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script>
-        // 初始化数据
-        const teams = [
-            { id: 1, name: '赵烟-jionzhao' },
-            { id: 2, name: '徐鹏-pengxu' },
-            { id: 3, name: '赵欢-buzh' },
-            { id: 4, name: '沈伟杰-weijshen' },
-            { id: 5, name: '王涛-wantao' },
-            { id: 6, name: '张长坤-chanzhan' }
-        ];
-
         // 比分选项和对应的积分规则
-        // rowScore: 行队伍的积分，colScore: 列队伍的积分
         const scoreOptions = [
             { display: '2-0', rowScore: 2, colScore: 1 },
             { display: '2-1', rowScore: 2, colScore: 1 },
@@ -338,14 +383,159 @@
         ];
 
         // 存储比赛成绩
-        const matchScores = {};
-        // 存储用户直接填充的格子（用于判断是否计算积分）
+        const matchScores = new Map();
+        // 存储用户直接填充的格子
         const userFilledMatches = new Set();
+        // 存储选手信息
+        let teams = [];
+
+        // 处理文件上传
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // 检查XLSX库是否加载
+            if (typeof XLSX === 'undefined') {
+                alert('❌ Excel库加载中，请稍候后重试');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    
+                    // 解析选手名称
+                    const teamNames = [];
+                    for (let i = 1; i < jsonData.length; i++) {
+                        const row = jsonData[i];
+                        if (row[0]) {
+                            // 提取选手名称（去掉序号）
+                            const name = row[0].toString().replace(/^\d+-/, '');
+                            teamNames.push(name);
+                        }
+                    }
+
+                    if (teamNames.length === 0) {
+                        alert('❌ 无法识别选手信息，请检查文件格式');
+                        return;
+                    }
+
+                    // 根据选手数量重建表格
+                    initTableWithTeams(teamNames);
+                    
+                    // 尝试恢复比分数据
+                    restoreScoresFromData(jsonData, teamNames);
+                    
+                    alert(`✅ 成功导入 ${teamNames.length} 位选手！`);
+                } catch (error) {
+                    console.error('解析错误:', error);
+                    alert('❌ 文件解析失败：' + error.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 从导入的数据中恢复比分
+        function restoreScoresFromData(jsonData, teamNames) {
+            // 跳过表头行，从第二行开始
+            for (let i = 1; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                if (!row[0]) continue;
+                
+                // 第一列是选手名称，跳过
+                // 第2到n+1列是对手的比分
+                for (let j = 1; j <= teamNames.length; j++) {
+                    const score = row[j];
+                    if (score && score !== '-' && score !== '') {
+                        // 构建matchKey: 行号-列号
+                        const matchKey = `${i}-${j}`;
+                        
+                        // 查找对应的按钮并设置比分
+                        const btn = document.querySelector(`button[data-match="${matchKey}"]`);
+                        if (btn) {
+                            // 找到对应的scoreOption
+                            const scoreOption = scoreOptions.find(opt => opt.display === score);
+                            if (scoreOption) {
+                                // 直接设置比分而不触发下拉菜单
+                                matchScores.set(matchKey, { 
+                                    display: score, 
+                                    rowScore: scoreOption.rowScore, 
+                                    colScore: scoreOption.colScore 
+                                });
+                                btn.textContent = score;
+                                btn.classList.add('selected');
+                                // 只标记上三角的格子为用户填充，避免重复计算
+                                if (i < j) {
+                                    userFilledMatches.add(matchKey);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 恢复完成后重新计算积分
+            calculateScores();
+        }
+
+        // 根据选手列表初始化表格
+        function initTableWithTeams(teamNames) {
+            // 更新全局teams数组
+            teams = teamNames.map((name, index) => ({
+                id: index + 1,
+                name: name
+            }));
+
+            // 更新表头
+            const numTeams = teams.length;
+            for (let i = 1; i <= 7; i++) {
+                const header = document.getElementById(`header-${i}`);
+                if (i <= numTeams) {
+                    header.style.display = '';
+                    header.textContent = i;
+                } else {
+                    header.style.display = 'none';
+                }
+            }
+
+            // 清空并重建表格
+            matchScores.clear();
+            userFilledMatches.clear();
+            initTable();
+        }
+
+        // 拖拽上传支持
+        const uploadBox = document.querySelector('.upload-box');
+        if (uploadBox) {
+            uploadBox.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadBox.classList.add('dragover');
+            });
+
+            uploadBox.addEventListener('dragleave', () => {
+                uploadBox.classList.remove('dragover');
+            });
+
+            uploadBox.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadBox.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    document.getElementById('fileInput').files = files;
+                    handleFileUpload({ target: { files: files } });
+                }
+            });
+        }
 
         // 初始化表格
         function initTable() {
             const tableBody = document.getElementById('tableBody');
             tableBody.innerHTML = '';
+            const numTeams = teams.length;
 
             teams.forEach((teamRow, rowIndex) => {
                 const row = document.createElement('tr');
@@ -357,10 +547,8 @@
                     const matchKey = `${teamRowId}-${teamColId}`;
 
                     if (rowIndex === colIndex) {
-                        // 对角线：自己vs自己，留空
                         rowHTML += `<td class="disabled-cell"></td>`;
                     } else {
-                        // 创建比分选择器
                         rowHTML += `
                             <td class="score-cell">
                                 <button class="score-btn" data-match="${matchKey}" onclick="toggleScoreDropdown(event, '${matchKey}')">-</button>
@@ -393,23 +581,17 @@
 
         // 选择比分
         function selectScore(matchKey, optionIndex, display, rowScore, colScore) {
-            matchScores[matchKey] = { optionIndex, display, rowScore, colScore };
-            // 标记这个格子是用户直接填充的
+            matchScores.set(matchKey, { optionIndex, display, rowScore, colScore });
             userFilledMatches.add(matchKey);
             
-            // 更新按钮显示
             const btn = document.querySelector(`button[data-match="${matchKey}"]`);
             btn.textContent = display;
             btn.classList.add('selected');
             
-            // 关闭下拉菜单
             const dropdown = document.getElementById(`dropdown-${matchKey}`);
             dropdown.classList.remove('show');
             
-            // 同步对称的格子
             syncSymmetricMatch(matchKey, display, rowScore, colScore);
-            
-            // 自动计算积分
             calculateScores();
         }
 
@@ -418,18 +600,15 @@
             const [teamRowId, teamColId] = matchKey.split('-').map(Number);
             const symmetricKey = `${teamColId}-${teamRowId}`;
             
-            // 找到反转后的比分显示
             const reversedDisplay = `${display.split('-')[1]}-${display.split('-')[0]}`;
             
-            // 对称的格子中，行列互换，积分也要互换，比分也要反转
-            matchScores[symmetricKey] = { 
+            matchScores.set(symmetricKey, { 
                 optionIndex: scoreOptions.findIndex(opt => opt.display === reversedDisplay),
-                display: reversedDisplay,  // 反转比分显示
-                rowScore: colScore,  // 互换
-                colScore: rowScore   // 互换
-            };
+                display: reversedDisplay,
+                rowScore: colScore,
+                colScore: rowScore
+            });
             
-            // 更新对称格子的按钮显示
             const symmetricBtn = document.querySelector(`button[data-match="${symmetricKey}"]`);
             if (symmetricBtn) {
                 symmetricBtn.textContent = reversedDisplay;
@@ -446,9 +625,6 @@
 
         // 检查是否所有比赛都已填满
         function areAllMatchesFilled() {
-            // 对于6个队伍，总共需要填的格子数是：6*6 - 6 = 30
-            // （总共36个格子，减去对角线的6个）
-            // 但用户只需要填一半（15个），另一半会自动同步
             const totalUserFilled = teams.length * (teams.length - 1) / 2;
             return userFilledMatches.size === totalUserFilled;
         }
@@ -457,23 +633,18 @@
         function calculateScores() {
             const scores = {};
 
-            // 初始化每个队伍的积分
             teams.forEach(team => {
                 scores[team.id] = 0;
             });
 
-            // 根据比赛成绩计算积分
-            // 只计算用户直接填充的格子（避免重复计算）
             userFilledMatches.forEach(matchKey => {
-                const scoreData = matchScores[matchKey];
+                const scoreData = matchScores.get(matchKey);
                 const [teamRowId, teamColId] = matchKey.split('-').map(Number);
                 
-                // 行队伍获得rowScore分，列队伍获得colScore分
                 scores[teamRowId] += scoreData.rowScore;
                 scores[teamColId] += scoreData.colScore;
             });
 
-            // 加上计算分
             teams.forEach(team => {
                 const calcInput = document.querySelector(`input[data-team="${team.id}"][data-type="calc"]`);
                 if (calcInput) {
@@ -481,14 +652,11 @@
                 }
             });
 
-            // 更新积分显示
             teams.forEach(team => {
                 document.querySelector(`td[data-total="${team.id}"]`).textContent = scores[team.id];
             });
 
-            // 只有当所有比赛都填满时才显示名次
             if (areAllMatchesFilled()) {
-                // 排序并更新名次
                 const sorted = Object.entries(scores)
                     .sort((a, b) => b[1] - a[1])
                     .map((item, index) => ({
@@ -500,7 +668,6 @@
                     document.querySelector(`td[data-rank="${item.id}"]`).textContent = item.rank;
                 });
             } else {
-                // 如果还有比赛未填，名次显示为"-"
                 document.querySelectorAll('.rank').forEach(cell => {
                     cell.textContent = '-';
                 });
@@ -510,24 +677,18 @@
         // 重置表格
         function resetTable() {
             if (confirm('确定要重置所有数据吗？')) {
-                // 清空比赛成绩
-                Object.keys(matchScores).forEach(key => {
-                    delete matchScores[key];
-                });
+                matchScores.clear();
                 userFilledMatches.clear();
 
-                // 重置按钮
                 document.querySelectorAll('.score-btn').forEach(btn => {
                     btn.textContent = '-';
                     btn.classList.remove('selected');
                 });
 
-                // 重置计算分
                 document.querySelectorAll('input[data-type="calc"]').forEach(input => {
                     input.value = '0';
                 });
 
-                // 重置积分和名次
                 document.querySelectorAll('.total-score').forEach(cell => {
                     cell.textContent = '0';
                 });
@@ -537,57 +698,72 @@
             }
         }
 
-        // 导出为CSV
+        // 导出为XLSX
         function exportToCSV() {
-            let csv = '队伍名称';
+            // 创建工作簿
+            const workbook = XLSX.utils.book_new();
             
-            // 添加对手列
+            // 准备数据
+            const data = [];
+            
+            // 添加表头
+            const header = ['选手名称'];
             teams.forEach((team, idx) => {
-                csv += `,对手${idx + 1}`;
+                header.push(`对手${idx + 1}`);
             });
-            csv += ',积分,名次\n';
-
+            header.push('积分', '名次');
+            data.push(header);
+            
+            // 添加数据行
             const rows = document.querySelectorAll('#tableBody tr');
             rows.forEach((row, rowIdx) => {
                 const cells = row.querySelectorAll('td');
+                const rowData = [];
                 const teamName = cells[0].textContent;
-                csv += teamName;
+                rowData.push(teamName);
                 
                 // 添加每场比赛的成绩
                 for (let i = 1; i <= teams.length; i++) {
                     const btn = cells[i].querySelector('.score-btn');
                     if (btn) {
-                        csv += `,${btn.textContent}`;
+                        rowData.push(btn.textContent);
                     } else {
-                        csv += `,`;
+                        rowData.push('');
                     }
                 }
                 
                 const total = cells[teams.length + 1].textContent;
                 const rank = cells[teams.length + 3].textContent;
 
-                csv += `,${total},${rank}\n`;
+                rowData.push(total, rank);
+                data.push(rowData);
             });
-
-            // 创建下载链接，添加UTF-8 BOM以支持中文
-            const BOM = '\uFEFF';
-            const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
             
-            link.setAttribute('href', url);
-            link.setAttribute('download', '乒乓球计分表.csv');
-            link.style.visibility = 'hidden';
+            // 创建工作表
+            const worksheet = XLSX.utils.aoa_to_sheet(data);
             
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            alert('✅ 数据已导出！');
+            // 设置列宽
+            const colWidths = [15];
+            for (let i = 0; i < teams.length; i++) {
+                colWidths.push(12);
+            }
+            colWidths.push(10, 10);
+            worksheet['!cols'] = colWidths.map(w => ({ wch: w }));
+            
+            // 添加工作表到工作簿
+            XLSX.utils.book_append_sheet(workbook, worksheet, '计分表');
+            
+            // 导出文件
+            XLSX.writeFile(workbook, '乒乓球计分表.xlsx');
+            
+            alert('✅ 数据已导出为XLSX格式！');
         }
 
         // 页面加载时初始化
-        window.addEventListener('DOMContentLoaded', initTable);
+        window.addEventListener('DOMContentLoaded', () => {
+            // 初始化为空表格
+            teams = [];
+        });
     </script>
 </body>
 </html>
