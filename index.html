@@ -205,12 +205,30 @@
             cursor: not-allowed;
             color: #333;
             font-weight: bold;
+            line-height: 1.2;
         }
 
         .calc-cell input:focus {
             outline: none;
             border-color: #ddd;
             box-shadow: none;
+        }
+
+        .calc-display {
+            background: #f5f5f5;
+            cursor: not-allowed;
+            color: #333;
+            font-weight: bold;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 32px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 13px;
+            line-height: 1.4;
         }
 
         .score-input {
@@ -461,7 +479,10 @@
                 }
             }
             
-            calculateScores();
+            // 恢复完成后重新计算积分
+            setTimeout(() => {
+                calculateScores();
+            }, 100);
         }
 
         // 根据选手列表初始化表格
@@ -543,7 +564,7 @@
 
                 rowHTML += `
                     <td class="total-score" data-total="${teamRow.id}">0</td>
-                    <td class="calc-cell"><input type="number" class="score-input" min="0" value="0" data-team="${teamRow.id}" data-type="calc" disabled readonly></td>
+                    <td class="calc-cell"><div class="calc-display" data-team="${teamRow.id}" data-type="calc">0</div></td>
                     <td class="rank" data-rank="${teamRow.id}">-</td>
                 `;
                 row.innerHTML = rowHTML;
@@ -560,6 +581,17 @@
 
         // 选择比分
         function selectScore(matchKey, optionIndex, display, rowScore, colScore) {
+            // 先清除旧的对称格子数据
+            const [teamRowId, teamColId] = matchKey.split('-').map(Number);
+            const symmetricKey = `${teamColId}-${teamRowId}`;
+            
+            // 清除旧数据
+            matchScores.delete(matchKey);
+            matchScores.delete(symmetricKey);
+            userFilledMatches.delete(matchKey);
+            userFilledMatches.delete(symmetricKey);
+            
+            // 设置新数据
             matchScores.set(matchKey, { optionIndex, display, rowScore, colScore });
             userFilledMatches.add(matchKey);
             
@@ -612,10 +644,12 @@
         function calculateScores() {
             const scores = {};
             const calcScores = {};
+            const winLossStats = {}; // 胜负统计
 
             teams.forEach(team => {
                 scores[team.id] = 0;
                 calcScores[team.id] = 0;
+                winLossStats[team.id] = { wins: 0, losses: 0, groupWins: 0, groupLosses: 0 };
             });
 
             userFilledMatches.forEach(matchKey => {
@@ -624,6 +658,15 @@
                 
                 scores[teamRowId] += scoreData.rowScore;
                 scores[teamColId] += scoreData.colScore;
+                
+                // 统计胜负
+                if (scoreData.rowScore > scoreData.colScore) {
+                    winLossStats[teamRowId].wins++;
+                    winLossStats[teamColId].losses++;
+                } else if (scoreData.rowScore < scoreData.colScore) {
+                    winLossStats[teamRowId].losses++;
+                    winLossStats[teamColId].wins++;
+                }
             });
 
             teams.forEach(team => {
@@ -647,6 +690,9 @@
                     const sameScoreTeams = scoreGroups[teamScore];
 
                     let calcScore = 0;
+                    let groupWins = 0;
+                    let groupLosses = 0;
+                    
                     if (sameScoreTeams.length > 1) {
                         // 有同分的队伍，计算与他们的胜负关系
                         sameScoreTeams.forEach(otherTeamId => {
@@ -656,24 +702,44 @@
                                 if (matchScores.has(matchKey)) {
                                     const scoreData = matchScores.get(matchKey);
                                     calcScore += scoreData.rowScore;
+                                    
+                                    // 统计同分组内的胜负
+                                    if (scoreData.rowScore > scoreData.colScore) {
+                                        groupWins++;
+                                    } else if (scoreData.rowScore < scoreData.colScore) {
+                                        groupLosses++;
+                                    }
                                 }
                             }
                         });
                     }
                     
-                    // 设置计算分
-                    const calcInput = document.querySelector(`input[data-team="${team.id}"][data-type="calc"]`);
-                    if (calcInput) {
-                        calcInput.value = calcScore;
+                    // 保存同分组内的胜负数据
+                    winLossStats[team.id].groupWins = groupWins;
+                    winLossStats[team.id].groupLosses = groupLosses;
+                    
+                    // 设置计算分显示
+                    const calcDisplay = document.querySelector(`div[data-team="${team.id}"][data-type="calc"]`);
+                    if (calcDisplay) {
+                        if (sameScoreTeams.length > 2 && calcScore === sameScoreTeams.length - 1) {
+                            // 三人或以上同分，且都是3分（各自一胜一负）的情况
+
+                            calcDisplay.textContent = `${calcScore}; ${groupWins}/${groupLosses}`;
+                        } else {
+                            // 普通情况
+                            calcDisplay.textContent = calcScore;
+                        }
                     }
                     calcScores[team.id] = calcScore;
                 });
 
-                // 排序：先按积分排序，积分相同则按计算分排序
+                // 排序：先按积分排序，积分相同则按计算分排序，计算分相同则按同分组内胜负排序
                 const sorted = teams.map(team => ({
                     id: team.id,
                     score: scores[team.id],
-                    calcScore: calcScores[team.id]
+                    calcScore: calcScores[team.id],
+                    groupWins: winLossStats[team.id].groupWins,
+                    groupLosses: winLossStats[team.id].groupLosses
                 }))
                 .sort((a, b) => {
                     // 先比较积分
@@ -681,7 +747,15 @@
                         return b.score - a.score;
                     }
                     // 积分相同则比较计算分
-                    return b.calcScore - a.calcScore;
+                    if (b.calcScore !== a.calcScore) {
+                        return b.calcScore - a.calcScore;
+                    }
+                    // 计算分相同则比较同分组内胜局数
+                    if (b.groupWins !== a.groupWins) {
+                        return b.groupWins - a.groupWins;
+                    }
+                    // 同分组内胜局数相同则比较负局数（越少越好）
+                    return a.groupLosses - b.groupLosses;
                 })
                 .map((item, index) => ({
                     id: item.id,
@@ -694,9 +768,9 @@
             } else {
                 // 还有比赛未填，清空附加分和排名
                 teams.forEach(team => {
-                    const calcInput = document.querySelector(`input[data-team="${team.id}"][data-type="calc"]`);
-                    if (calcInput) {
-                        calcInput.value = 0;
+                    const calcDisplay = document.querySelector(`div[data-team="${team.id}"][data-type="calc"]`);
+                    if (calcDisplay) {
+                        calcDisplay.textContent = '0';
                     }
                 });
                 document.querySelectorAll('.rank').forEach(cell => {
@@ -716,8 +790,8 @@
                     btn.classList.remove('selected');
                 });
 
-                document.querySelectorAll('input[data-type="calc"]').forEach(input => {
-                    input.value = '0';
+                document.querySelectorAll('div[data-type="calc"]').forEach(div => {
+                    div.textContent = '0';
                 });
 
                 document.querySelectorAll('.total-score').forEach(cell => {
@@ -759,7 +833,8 @@
                 }
                 
                 const total = cells[teams.length + 1].textContent;
-                const calc = cells[teams.length + 2].querySelector('input').value;
+                const calcDisplay = cells[teams.length + 2].querySelector('div');
+                const calc = calcDisplay ? calcDisplay.textContent : '0';
                 const rank = cells[teams.length + 3].textContent;
 
                 rowData.push(total, calc, rank);
