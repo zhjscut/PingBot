@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>乒乓球小组赛计分表</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+        }
+
+        td {
+            background: white;
+        }
+
+        tr:nth-child(even) td {
+            background: #f9f9f9;
+        }
+
+        tr:hover td {
+            background: #f0f0f0;
+        }
+
+        .team-name {
+            text-align: left;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .score-cell {
+            position: relative;
+        }
+
+        .score-btn {
+            width: 60px;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 13px;
+            cursor: pointer;
+            background: white;
+            transition: all 0.2s ease;
+        }
+
+        .score-btn:hover {
+            background: #f0f0f0;
+            border-color: #667eea;
+        }
+
+        .score-btn.selected {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .score-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            min-width: 80px;
+        }
+
+        .score-dropdown.show {
+            display: block;
+        }
+
+        .score-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+            transition: background 0.2s ease;
+        }
+
+        .score-option:last-child {
+            border-bottom: none;
+        }
+
+        .score-option:hover {
+            background: #f5f5f5;
+        }
+
+        .score-option.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .disabled-cell {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+
+        .calc-cell {
+            background: #f5f5f5;
+        }
+
+        .calc-cell input {
+            background: #f5f5f5;
+            cursor: not-allowed;
+            color: #999;
+        }
+
+        .calc-cell input:focus {
+            outline: none;
+            border-color: #ddd;
+            box-shadow: none;
+        }
+
+        .score-input {
+            width: 50px;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .score-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
+        }
+
+        .total-score {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 16px;
+        }
+
+        .rank {
+            font-weight: bold;
+            color: #764ba2;
+            font-size: 16px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        .btn-calculate {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-calculate:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-reset {
+            background: #f0f0f0;
+            color: #333;
+            border: 1px solid #ddd;
+        }
+
+        .btn-reset:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-export {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-export:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+        }
+
+        .info-text {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+
+            h1 {
+                font-size: 20px;
+                margin-bottom: 20px;
+            }
+
+            th, td {
+                padding: 8px;
+                font-size: 12px;
+            }
+
+            .score-input {
+                width: 40px;
+                padding: 4px;
+                font-size: 12px;
+            }
+
+            .button-group {
+                flex-wrap: wrap;
+            }
+
+            button {
+                padding: 8px 15px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏓 乒乓球小组赛计分表</h1>
+        
+        <div class="table-wrapper">
+            <table id="scoreTable">
+                <thead>
+                    <tr>
+                        <th>选手名称</th>
+                        <th>1</th>
+                        <th>2</th>
+                        <th>3</th>
+                        <th>4</th>
+                        <th>5</th>
+                        <th>6</th>
+                        <th>积分</th>
+                        <th>计算</th>
+                        <th>名次</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                </tbody>
+            </table>
+        </div>
+
+        <div class="button-group">
+            <button class="btn-calculate" onclick="calculateScores()">计算积分</button>
+            <button class="btn-export" onclick="exportToCSV()">导出数据</button>
+            <button class="btn-reset" onclick="resetTable()">重置表格</button>
+        </div>
+
+        <div class="info-text">
+            💡 提示：点击比赛成绩格子选择比分（0-0、2-0、2-1、1-2、0-2），胜积2分、负积1分、平局0分。对称的格子会自动同步，系统自动计算排名。
+        </div>
+    </div>
+
+    <script>
+        // 初始化数据
+        const teams = [
+            { id: 1, name: '赵烟-jionzhao' },
+            { id: 2, name: '徐鹏-pengxu' },
+            { id: 3, name: '赵欢-buzh' },
+            { id: 4, name: '沈伟杰-weijshen' },
+            { id: 5, name: '王涛-wantao' },
+            { id: 6, name: '张长坤-chanzhan' }
+        ];
+
+        // 比分选项和对应的积分规则
+        // rowScore: 行队伍的积分，colScore: 列队伍的积分
+        const scoreOptions = [
+            { display: '2-0', rowScore: 2, colScore: 1 },
+            { display: '2-1', rowScore: 2, colScore: 1 },
+            { display: '1-2', rowScore: 1, colScore: 2 },
+            { display: '0-2', rowScore: 1, colScore: 2 },
+            { display: '0-0', rowScore: 0, colScore: 0 }
+        ];
+
+        // 存储比赛成绩
+        const matchScores = {};
+        // 存储用户直接填充的格子（用于判断是否计算积分）
+        const userFilledMatches = new Set();
+
+        // 初始化表格
+        function initTable() {
+            const tableBody = document.getElementById('tableBody');
+            tableBody.innerHTML = '';
+
+            teams.forEach((teamRow, rowIndex) => {
+                const row = document.createElement('tr');
+                let rowHTML = `<td class="team-name">${rowIndex + 1}-${teamRow.name}</td>`;
+
+                teams.forEach((teamCol, colIndex) => {
+                    const teamRowId = teamRow.id;
+                    const teamColId = teamCol.id;
+                    const matchKey = `${teamRowId}-${teamColId}`;
+
+                    if (rowIndex === colIndex) {
+                        // 对角线：自己vs自己，留空
+                        rowHTML += `<td class="disabled-cell"></td>`;
+                    } else {
+                        // 创建比分选择器
+                        rowHTML += `
+                            <td class="score-cell">
+                                <button class="score-btn" data-match="${matchKey}" onclick="toggleScoreDropdown(event, '${matchKey}')">-</button>
+                                <div class="score-dropdown" id="dropdown-${matchKey}">
+                                    ${scoreOptions.map((opt, idx) => `
+                                        <div class="score-option" onclick="selectScore('${matchKey}', ${idx}, '${opt.display}', ${opt.rowScore}, ${opt.colScore})">${opt.display}</div>
+                                    `).join('')}
+                                </div>
+                            </td>
+                        `;
+                    }
+                });
+
+                rowHTML += `
+                    <td class="total-score" data-total="${teamRow.id}">0</td>
+                    <td class="calc-cell"><input type="number" class="score-input" min="0" value="0" data-team="${teamRow.id}" data-type="calc" disabled></td>
+                    <td class="rank" data-rank="${teamRow.id}">-</td>
+                `;
+                row.innerHTML = rowHTML;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // 切换下拉菜单
+        function toggleScoreDropdown(event, matchKey) {
+            event.stopPropagation();
+            const dropdown = document.getElementById(`dropdown-${matchKey}`);
+            dropdown.classList.toggle('show');
+        }
+
+        // 选择比分
+        function selectScore(matchKey, optionIndex, display, rowScore, colScore) {
+            matchScores[matchKey] = { optionIndex, display, rowScore, colScore };
+            // 标记这个格子是用户直接填充的
+            userFilledMatches.add(matchKey);
+            
+            // 更新按钮显示
+            const btn = document.querySelector(`button[data-match="${matchKey}"]`);
+            btn.textContent = display;
+            btn.classList.add('selected');
+            
+            // 关闭下拉菜单
+            const dropdown = document.getElementById(`dropdown-${matchKey}`);
+            dropdown.classList.remove('show');
+            
+            // 同步对称的格子
+            syncSymmetricMatch(matchKey, display, rowScore, colScore);
+            
+            // 自动计算积分
+            calculateScores();
+        }
+
+        // 同步对称的比赛格子
+        function syncSymmetricMatch(matchKey, display, rowScore, colScore) {
+            const [teamRowId, teamColId] = matchKey.split('-').map(Number);
+            const symmetricKey = `${teamColId}-${teamRowId}`;
+            
+            // 找到反转后的比分显示
+            const reversedDisplay = `${display.split('-')[1]}-${display.split('-')[0]}`;
+            
+            // 对称的格子中，行列互换，积分也要互换，比分也要反转
+            matchScores[symmetricKey] = { 
+                optionIndex: scoreOptions.findIndex(opt => opt.display === reversedDisplay),
+                display: reversedDisplay,  // 反转比分显示
+                rowScore: colScore,  // 互换
+                colScore: rowScore   // 互换
+            };
+            
+            // 更新对称格子的按钮显示
+            const symmetricBtn = document.querySelector(`button[data-match="${symmetricKey}"]`);
+            if (symmetricBtn) {
+                symmetricBtn.textContent = reversedDisplay;
+                symmetricBtn.classList.add('selected');
+            }
+        }
+
+        // 关闭所有下拉菜单
+        document.addEventListener('click', function() {
+            document.querySelectorAll('.score-dropdown').forEach(dropdown => {
+                dropdown.classList.remove('show');
+            });
+        });
+
+        // 检查是否所有比赛都已填满
+        function areAllMatchesFilled() {
+            // 对于6个队伍，总共需要填的格子数是：6*6 - 6 = 30
+            // （总共36个格子，减去对角线的6个）
+            // 但用户只需要填一半（15个），另一半会自动同步
+            const totalUserFilled = teams.length * (teams.length - 1) / 2;
+            return userFilledMatches.size === totalUserFilled;
+        }
+
+        // 计算积分
+        function calculateScores() {
+            const scores = {};
+
+            // 初始化每个队伍的积分
+            teams.forEach(team => {
+                scores[team.id] = 0;
+            });
+
+            // 根据比赛成绩计算积分
+            // 只计算用户直接填充的格子（避免重复计算）
+            userFilledMatches.forEach(matchKey => {
+                const scoreData = matchScores[matchKey];
+                const [teamRowId, teamColId] = matchKey.split('-').map(Number);
+                
+                // 行队伍获得rowScore分，列队伍获得colScore分
+                scores[teamRowId] += scoreData.rowScore;
+                scores[teamColId] += scoreData.colScore;
+            });
+
+            // 加上计算分
+            teams.forEach(team => {
+                const calcInput = document.querySelector(`input[data-team="${team.id}"][data-type="calc"]`);
+                if (calcInput) {
+                    scores[team.id] += parseInt(calcInput.value) || 0;
+                }
+            });
+
+            // 更新积分显示
+            teams.forEach(team => {
+                document.querySelector(`td[data-total="${team.id}"]`).textContent = scores[team.id];
+            });
+
+            // 只有当所有比赛都填满时才显示名次
+            if (areAllMatchesFilled()) {
+                // 排序并更新名次
+                const sorted = Object.entries(scores)
+                    .sort((a, b) => b[1] - a[1])
+                    .map((item, index) => ({
+                        id: parseInt(item[0]),
+                        rank: index + 1
+                    }));
+
+                sorted.forEach(item => {
+                    document.querySelector(`td[data-rank="${item.id}"]`).textContent = item.rank;
+                });
+            } else {
+                // 如果还有比赛未填，名次显示为"-"
+                document.querySelectorAll('.rank').forEach(cell => {
+                    cell.textContent = '-';
+                });
+            }
+        }
+
+        // 重置表格
+        function resetTable() {
+            if (confirm('确定要重置所有数据吗？')) {
+                // 清空比赛成绩
+                Object.keys(matchScores).forEach(key => {
+                    delete matchScores[key];
+                });
+                userFilledMatches.clear();
+
+                // 重置按钮
+                document.querySelectorAll('.score-btn').forEach(btn => {
+                    btn.textContent = '-';
+                    btn.classList.remove('selected');
+                });
+
+                // 重置计算分
+                document.querySelectorAll('input[data-type="calc"]').forEach(input => {
+                    input.value = '0';
+                });
+
+                // 重置积分和名次
+                document.querySelectorAll('.total-score').forEach(cell => {
+                    cell.textContent = '0';
+                });
+                document.querySelectorAll('.rank').forEach(cell => {
+                    cell.textContent = '-';
+                });
+            }
+        }
+
+        // 导出为CSV
+        function exportToCSV() {
+            let csv = '队伍名称';
+            
+            // 添加对手列
+            teams.forEach((team, idx) => {
+                csv += `,对手${idx + 1}`;
+            });
+            csv += ',积分,名次\n';
+
+            const rows = document.querySelectorAll('#tableBody tr');
+            rows.forEach((row, rowIdx) => {
+                const cells = row.querySelectorAll('td');
+                const teamName = cells[0].textContent;
+                csv += teamName;
+                
+                // 添加每场比赛的成绩
+                for (let i = 1; i <= teams.length; i++) {
+                    const btn = cells[i].querySelector('.score-btn');
+                    if (btn) {
+                        csv += `,${btn.textContent}`;
+                    } else {
+                        csv += `,`;
+                    }
+                }
+                
+                const total = cells[teams.length + 1].textContent;
+                const rank = cells[teams.length + 3].textContent;
+
+                csv += `,${total},${rank}\n`;
+            });
+
+            // 创建下载链接，添加UTF-8 BOM以支持中文
+            const BOM = '\uFEFF';
+            const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', '乒乓球计分表.csv');
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            alert('✅ 数据已导出！');
+        }
+
+        // 页面加载时初始化
+        window.addEventListener('DOMContentLoaded', initTable);
+    </script>
+</body>
+</html>
