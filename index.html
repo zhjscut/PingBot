@@ -398,6 +398,15 @@
             { display: '0-0', rowScore: 0, colScore: 0 }
         ];
 
+        // 从比分字符串中提取小局分
+        function extractGameScores(display) {
+            const parts = display.split('-');
+            return {
+                rowGameScore: parseInt(parts[0]),
+                colGameScore: parseInt(parts[1])
+            };
+        }
+
         // 存储比赛成绩
         const matchScores = new Map();
         // 存储用户直接填充的格子
@@ -703,15 +712,15 @@
                                     const scoreData = matchScores.get(matchKey);
                                     calcScore += scoreData.rowScore;
                                     
-                                    // 统计同分组内的胜负
-                                    if (scoreData.rowScore > scoreData.colScore) {
-                                        groupWins++;
-                                    } else if (scoreData.rowScore < scoreData.colScore) {
-                                        groupLosses++;
-                                    }
+                                    // 从比分字符串中提取小局分，累加作为胜局数和败局数
+                                    const gameScores = extractGameScores(scoreData.display);
+                                    groupWins += gameScores.rowGameScore;
+                                    groupLosses += gameScores.colGameScore;
+                                    console.log(`Team ${team.id} vs Team ${otherTeamId}: ${scoreData.display}, gameScores: ${gameScores.rowGameScore}-${gameScores.colGameScore}`);
                                 }
                             }
                         });
+                        console.log(`Team ${team.id}: calcScore=${calcScore}, groupWins=${groupWins}, groupLosses=${groupLosses}`);
                     }
                     
                     // 保存同分组内的胜负数据
@@ -721,14 +730,8 @@
                     // 设置计算分显示
                     const calcDisplay = document.querySelector(`div[data-team="${team.id}"][data-type="calc"]`);
                     if (calcDisplay) {
-                        if (sameScoreTeams.length > 2 && calcScore === sameScoreTeams.length - 1) {
-                            // 三人或以上同分，且都是3分（各自一胜一负）的情况
-
-                            calcDisplay.textContent = `${calcScore}; ${groupWins}/${groupLosses}`;
-                        } else {
-                            // 普通情况
-                            calcDisplay.textContent = calcScore;
-                        }
+                        // 总是显示格式：附加分; 胜局数/败局数
+                        calcDisplay.textContent = `${calcScore}; ${groupWins}/${groupLosses}`;
                     }
                     calcScores[team.id] = calcScore;
                 });
